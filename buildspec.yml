@@ -1,0 +1,19 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "Upgrading AWScli"
+      - echo "Upgrading SAM cli"
+      - sam --version
+      - aws s3 mb s3://20-aws-lambda-sam-s3-uploader
+
+  build:
+    commands:
+      - echo "creating Package file for deployment"
+      - aws cloudformation package --s3-bucket 20-aws-lambda-sam-s3-uploader --template-file template.yaml --output-template-file template-generated.yaml
+
+  post_build:
+    commands:
+      - echo "deploy the serverless app"
+      - aws cloudformation deploy --template-file template-generated.yaml --stack-name project02 --capabilities CAPABILITY_IAM

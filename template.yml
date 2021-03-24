@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless S3 Uploader - upload files to S3 buckets from your web applications using pre-signed URLs.
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Api:
+    # Allows any site to call these APIs (can restrict by replacing asterisk with site name)
+    # Automatically adds AllowMethods with a list of methods for this API
+    EndpointConfiguration: EDGE
+    Cors:
+      AllowMethods: "'OPTIONS,GET'"
+      AllowHeaders: "'Content-Type'"
+      AllowOrigin: "'*'"
+  Function:
+    Timeout: 5
+    Environment:
+      Variables:
+        SQS_QUEUE_URL: !Ref DemoQueue
+
+Parameters:
+  DataBucketName:
+    Type: String
+    Description: S3 bucket where files will be uploaded
+    Default: sr-project01-upload-bucket
+
+Resources:
+  DemoDataBucket:
+    Type: AWS::S3::Bucket
+    DependsOn:
+      - S3SQSPermission
+    Properties:
+      BucketName: !Ref DataBucketName
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt S3ToSQSFunction.Arn
+            # Filter:
+            #   S3Key:
+            #     Rules:
+            #       - Name: suffix
+            #         Value: .csv
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - HEAD
+            AllowedOrigins:
+              - "*"
+  S3SQSPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !Ref S3ToSQSFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub "arn:aws:s3:::${DataBucketName}"
+      SourceAccount: !Ref AWS::AccountId
+
+  S3SQSFunctionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: allowLogging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:*
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: getObjects
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${DataBucketName}/*"
+        - PolicyName: produceToQueue
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt DemoQueue.Arn
+
+  S3Uploader:
+    Type: AWS::Serverless::Function
+    Description: Privide Oresigned URL for file upload into S3
+    Properties:
+      CodeUri: 01-s3FileUpload/
+      Handler: app.handler
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Environment:
+        Variables:
+          UploadBucket: !Ref DataBucketName
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DataBucketName
+      Events:
+        HttpPost:
+          Type: Api
+          Properties:
+            Path: "/"
+            Method: get
+
+  S3ToSQSFunction:
+    Type: AWS::Serverless::Function
+    Description: Respond to S3 Events
+    Properties:
+      Description: Responds to S3 Event - Sends to SQS
+      CodeUri: 02-lambda_s3_to_sqs/
+      Handler: app.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt S3SQSFunctionExecutionRole.Arn
+
+  SqsToDynamoDbFunction:
+    Type: AWS::Serverless::Function
+    Description: Responds to SQS Event - Sends to Dynamodb
+    Properties:
+      Description: Post new message to SQS
+      CodeUri: 03-lambda_sqs_to_dynamodb/
+      Handler: app.lambda_handler
+      Runtime: python3.7
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Cities
+      Events:
+        SqsToDynamoDb:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DemoQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
+  DemoQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+            - DeadLetterQueue
+            - Arn
+        maxReceiveCount: 5
+
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+
+Outputs:
+  S3Uploader:
+    Description: "Lambda Function ARN"
+    Value: !GetAtt S3Uploader.Arn
+  S3UploaderIamRole:
+    Description: "Implicit IAM Role created for function"
+    Value: !GetAtt S3UploaderRole.Arn
+  S3BucketName:
+    Description: S3 bucket
+    Value: !Ref DataBucketName
+  MyStacksRegion:
+    Description: "Region where cfn stack is located"
+    Value: !Ref AWS::Region
+  DemoBucket:
+    Description: "S3 bucket where CSV files are placed"
+    Value: !Ref DataBucketName
+  DemoQueueArn:
+    Description: "Arn of SQS Queue"
+    Value: !GetAtt DemoQueue.Arn
+  DemoQueueUrl:
+    Description: "URL of SQS Queue"
+    Value: !Ref DemoQueue
