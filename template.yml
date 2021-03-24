@@ -22,7 +22,7 @@ Parameters:
   DataBucketName:
     Type: String
     Description: S3 bucket where files will be uploaded
-    Default: sr-project01-upload-bucket
+    Default: 21-project02-upload-bucket
 
 Resources:
   DemoDataBucket:
