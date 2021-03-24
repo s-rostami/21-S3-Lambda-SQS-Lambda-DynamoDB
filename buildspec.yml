@@ -6,12 +6,12 @@ phases:
       - echo "Upgrading AWScli"
       - echo "Upgrading SAM cli"
       - sam --version
-      - aws s3 mb s3://20-aws-lambda-sam-s3-uploader
+      - aws s3 mb s3://21-aws-lambda-sam-s3-uploader
 
   build:
     commands:
       - echo "creating Package file for deployment"
-      - aws cloudformation package --s3-bucket 20-aws-lambda-sam-s3-uploader --template-file template.yml --output-template-file template-generated.yml
+      - aws cloudformation package --s3-bucket 21-aws-lambda-sam-s3-uploader --template-file template.yml --output-template-file template-generated.yml
 
   post_build:
     commands:
