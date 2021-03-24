@@ -25,7 +25,7 @@ Parameters:
     Default: 21-project02-upload-bucket
 
 Resources:
-  DemoDataBucket:
+  UploadBucket:
     Type: AWS::S3::Bucket
     DependsOn:
       - S3SQSPermission
